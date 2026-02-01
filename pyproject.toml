@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatchling.build]
+packages = ["src/rlhf_eval"]
+
+[project]
+name = "RLHF-EVAL"
+version = "0.1.0"
+description = "A production-grade rlhf evaluation system"
+requires-python = ">= 3.11"
+authors = [{name="Anthony Eugene Lewallen", email="anthonylewallen.dev@gmail.com"}]
+dependencies = [
+    "pydantic-settings>=2.0",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg",
+    "alembic",
+]
