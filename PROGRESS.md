@@ -56,8 +56,16 @@ Building a production-grade RLHF evaluation harness/toolkit featuring:
 - **Date**: 2026-02-01
 
 ### Milestone 2.2: Base Model
-- [ ] Create declarative base with SQLAlchemy 2.0
-- [ ] Common mixins (timestamps, ID)
+- [x] Create declarative base with SQLAlchemy 2.0
+- [x] TimestampMixin (created_at, updated_at)
+- [x] UUIDMixin (UUID primary key)
+- **Status**: APPROVED
+- **Date**: 2026-02-01
+
+### Milestone 2.3: Domain Models
+- [ ] Evaluation model
+- [ ] Response model
+- [ ] Comparison model
 - **Status**: NOT STARTED
 
 ### 3. Core Domain Models
@@ -93,6 +101,7 @@ Building a production-grade RLHF evaluation harness/toolkit featuring:
 
 ## Session Notes
 - Started: 2026-01-31
+- GitHub repo created: 2026-02-01
 
 ## Completed Milestones
 

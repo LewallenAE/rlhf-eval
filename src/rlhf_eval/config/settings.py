@@ -1,15 +1,35 @@
+#!/usr/bin/env python3
+"""
+ Enter module docstring here
+"""
+
+# ----------------- Futures -----------------
+from __future__ import annotations
+
+# ----------------- Standard Library -----------------
 from functools import lru_cache
+from typing import Final, FrozenSet
+
+# ----------------- Third Party Library -----------------
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# ----------------- Application Imports -----------------
+
+
+# ----------------- Module-level Configuration -----------------
+
+VALID_LOG_LEVELS: Final[FrozenSet[str]] = frozenset(
+    {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+)
 class Settings(BaseSettings):
-    """Application settings, loaded from environment variables and .env files.
-    """
+    """Application settings loaded from environment variables and `.env`."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        env_prefix="RLHF_",        
+        env_prefix="RLHF_",
+        extra="ignore",  # explicit: ignore unexpected env keys
     )
 
     database_url: str
@@ -19,18 +39,19 @@ class Settings(BaseSettings):
     debug: bool = Field(default=False)
     log_level: str = Field(default="INFO")
 
-    @field_validator("log_level")
+    @field_validator("log_level", mode="before")
     @classmethod
-    def validate_log_levels(cls, v: str) -> str:
+    def validate_log_level(cls, v: object) -> str:
+        # Explicit normalization: accept strings with whitespace, accept non-strings via str()
+        value = str(v).strip().upper()
 
-        upper_v = v.upper()
-        valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
-        if upper_v not in valid_levels:
-            raise ValueError(f"Invalid log level: {v}. "
-                             f"Must be one of the following: {valid_levels}")
-        return upper_v
+        if value not in VALID_LOG_LEVELS:
+            allowed = ", ".join(sorted(VALID_LOG_LEVELS))
+            raise ValueError(f"Invalid log_level={v!r}. Must be one of: {allowed}.")
 
-@lru_cache
+        return value
+
+
+@lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
-    
