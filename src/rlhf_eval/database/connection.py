@@ -1,51 +1,49 @@
-#!/usr/bin/env python3
-"""
-Database manager converting postgresql to postgresql with asyncpg, ensured cleanup, and disposal of the connection pool.
-"""
+"""Database connection and session management."""
 
-# ----------------- Futures -----------------
-from __future__ import annotations
+import os
+from typing import Self
 
-# ----------------- Standard Library -----------------
-from collections.abc import AsyncGenerator
-
-# ----------------- Third Party Library -----------------
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
-
-# ----------------- Application Imports -----------------
+from sqlalchemy import Engine, create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 
-# ----------------- Module-level Configuration -----------------
-
-class DatabaseManager:
-    """ Manages async database connections."""
-    def __init__(self, database_url: str, pool_size: int = 5) -> None:
-        # convert postgres:// to postgresql+asyncpg://
-        if database_url.startswith("postgresql://"):
-            database_url = database_url.replace(
-                "postgresql://", "postgresql+asyncpg://", 1
-            )
-
-        self.engine = create_async_engine(
-            database_url,
-            pool_size=pool_size,
-            echo=False,    # must be true for SQL logging
+def get_engine(database_url: str | None = None) -> Engine:
+    """Create database engine. Uses RLHF_DATABASE_URL or DATABASE_URL env var if not provided."""
+    url = database_url or os.environ.get("RLHF_DATABASE_URL") or os.environ.get("DATABASE_URL")
+    if not url:
+        raise ValueError(
+            "No database URL provided. Set RLHF_DATABASE_URL env var or pass directly."
         )
+    return create_engine(url, pool_size=5, echo=False)
 
-        self.session_factory = async_sessionmaker(
-            bind=self.engine,
-            expire_on_commit=False,
-        )
 
-    async def get_session(self) -> AsyncGenerator[AsyncSession, None]:
-        """Yield a session ensuring cleanup"""
-        async with self.session_factory() as session:
-            yield session
-    
-    async def close(self) -> None:
-        """Dispose of the connection pool"""
-        await self.engine.dispose()
+def get_session_factory(engine: Engine) -> sessionmaker[Session]:
+    """Create session factory."""
+    return sessionmaker(bind=engine, expire_on_commit=False)
+
+
+def get_session(engine: Engine) -> Session:
+    """Get a new session."""
+    factory = get_session_factory(engine)
+    return factory()
+
+
+class SessionContext:
+    """Context manager for database sessions with automatic commit/rollback."""
+
+    def __init__(self, engine: Engine | None = None) -> None:
+        self._engine = engine or get_engine()
+        self._session: Session | None = None
+
+    def __enter__(self) -> Session:
+        self._session = get_session(self._engine)
+        return self._session
+
+    def __exit__(self, exc_type: type | None, exc_val: Exception | None, exc_tb: object) -> None:
+        if self._session is None:
+            return
+        if exc_type is not None:
+            self._session.rollback()
+        else:
+            self._session.commit()
+        self._session.close()

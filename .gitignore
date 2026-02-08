@@ -6,3 +6,10 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+.claude/
+
+# Project-internal docs (not for repo)
+AGENTS.md
+PROGRESS.md
+claude_instructions.md
+spec.md

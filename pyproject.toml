@@ -13,7 +13,19 @@ requires-python = ">= 3.11"
 authors = [{name="Anthony Eugene Lewallen", email="anthonylewallen.dev@gmail.com"}]
 dependencies = [
     "pydantic-settings>=2.0",
-    "sqlalchemy[asyncio]>=2.0",
-    "asyncpg",
+    "sqlalchemy>=2.0",
+    "psycopg2-binary",
     "alembic",
+    "numpy",
+    "scipy",
+    "datasets",
+    "sentence-transformers",
+    "textstat",
+    "tqdm",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
 ]
