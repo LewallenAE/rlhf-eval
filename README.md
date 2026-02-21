@@ -33,7 +33,8 @@ Reward models are only as good as the preference data they're trained on. Noisy 
 
 *Test accuracy populated after running the Colab experiment notebook.*
 
-
+![Reward Model Comparison](src/results/Preference_Pair_Test_Result_01.webp)
+![Reward Model Comparison2](src/results/Prefernce_Pair_Test_Result_02.webp)
 
 ## Architecture
 
