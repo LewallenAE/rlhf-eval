@@ -19,6 +19,7 @@ from .base import BaseDetector
 
 if TYPE_CHECKING:
     from .length_ratio import LengthRatioDetector as LengthRatioDetector
+    from .llm_judge import LLMJudgeDetector as LLMJudgeDetector
     from .readability import ReadabilityMismatchDetector as ReadabilityMismatchDetector
     from .refusal_bias import RefusalBiasDetector as RefusalBiasDetector
     from .repetition import RepetitionDetector as RepetitionDetector
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
 __all__ = [
     "BaseDetector",
     "LengthRatioDetector",
+    "LLMJudgeDetector",
     "ReadabilityMismatchDetector",
     "RefusalBiasDetector",
     "RepetitionDetector",
@@ -55,6 +57,7 @@ def _build_registry() -> dict[str, type[BaseDetector]]:
         ("rlhf_eval.detectors.length_ratio", "LengthRatioDetector", "length_ratio"),
         ("rlhf_eval.detectors.refusal_bias", "RefusalBiasDetector", "refusal_bias"),
         ("rlhf_eval.detectors.unsafe_prompt", "UnsafePromptDetector", "unsafe_prompt"),
+        ("rlhf_eval.detectors.llm_judge", "LLMJudgeDetector", "llm_judge"),
     ]
 
     import importlib

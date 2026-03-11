@@ -108,8 +108,14 @@ def run_detector(
             if to_process:
                 # Build pairs for batch scoring.
                 # unsafe_prompt scores the human prompt, not assistant responses.
+                # llm_judge needs (prompt, chosen, rejected) triplets.
                 if detector.name == "unsafe_prompt":
                     pairs = [(ex.prompt, "") for ex in to_process]
+                elif detector.name == "llm_judge":
+                    pairs = [
+                        (ex.prompt, ex.chosen_last_assistant, ex.rejected_last_assistant)
+                        for ex in to_process
+                    ]
                 else:
                     pairs = [
                         (ex.chosen_last_assistant, ex.rejected_last_assistant)
@@ -122,6 +128,8 @@ def run_detector(
                     score_val = float(score)
                     if detector.name == "unsafe_prompt":
                         metadata = detector.get_metadata(ex.prompt, "")
+                    elif detector.name == "llm_judge":
+                        metadata = detector.get_metadata(ex.prompt, ex.chosen_last_assistant)
                     else:
                         metadata = detector.get_metadata(
                             ex.chosen_last_assistant, ex.rejected_last_assistant
@@ -398,6 +406,9 @@ def _get_default_detectors(settings) -> list[BaseDetector]:
         try:
             if name == "semantic_similarity":
                 instance = detector_cls(model_name=settings.embedding_model)
+            elif name == "llm_judge":
+                # Instantiated without explicit api_key — uses OPENAI_API_KEY env var
+                instance = detector_cls()
             else:
                 instance = detector_cls()
             detectors.append(instance)

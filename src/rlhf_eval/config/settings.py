@@ -40,6 +40,8 @@ DEFAULT_DETECTORS: dict[str, DetectorConfig] = {
     "length_ratio": DetectorConfig(threshold_percentile=5.0),  # lower is worse → low percentile
     "refusal_bias": DetectorConfig(threshold_percentile=99.0),
     "unsafe_prompt": DetectorConfig(threshold_percentile=99.0),
+    # LLM judge is opt-in (disabled by default — requires OPENAI_API_KEY + cost)
+    "llm_judge": DetectorConfig(enabled=True, threshold_percentile=99.5),
 }
 
 

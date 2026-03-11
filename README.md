@@ -1,5 +1,7 @@
 # RLHF Evaluation Harness
 
+[![CI](https://github.com/LewallenAE/rlhf-eval/actions/workflows/ci.yml/badge.svg)](https://github.com/LewallenAE/rlhf-eval/actions/workflows/ci.yml)
+
 An end-to-end system for detecting problematic preference pairs in RLHF training data, training reward models on filtered vs. unfiltered datasets, and measuring the impact of data quality on model performance.
 
 Built against Anthropic's [HH-RLHF](https://huggingface.co/datasets/Anthropic/hh-rlhf) dataset (160,800 preference pairs).
@@ -10,7 +12,7 @@ Reward models are only as good as the preference data they're trained on. Noisy 
 
 ## Results
 
-**Data Quality Pipeline** — 160,800 examples scored by 6 detectors:
+**Data Quality Pipeline** — 160,800 examples scored by 7 detectors:
 
 | Detector | Flagged | Rate | What It Catches |
 |---|---|---|---|
@@ -20,7 +22,8 @@ Reward models are only as good as the preference data they're trained on. Noisy 
 | Length Ratio | 8,067 | 5.0% | Suspiciously short responses to complex prompts |
 | Refusal Bias | 291 | 0.2% | Chosen refuses while rejected is helpful |
 | Unsafe Prompt | 1,680 | 1.0% | Prompts where neither response may be valid |
-| **Total unique** | **12,693** | **7.9%** | |
+| LLM Judge (GPT-4o-mini) | TBD | TBD | Semantic pathologies rule-based detectors miss |
+| **Total unique** | **12,693+** | **7.9%+** | |
 
 **148,107 clean examples** retained (92.1% of dataset).
 
@@ -47,6 +50,8 @@ The clean model produces a tighter, more calibrated reward gap. In production RL
 
 ```
 src/rlhf_eval/
+├── api/
+│   └── routes.py              # FastAPI service (POST /ingest, POST /score, GET /experiments)
 ├── config/
 │   └── settings.py            # Pydantic configuration (RLHF_ env prefix)
 ├── database/
@@ -60,7 +65,8 @@ src/rlhf_eval/
 │   ├── repetition.py          # Unique word ratio + n-gram detection
 │   ├── length_ratio.py        # Response-to-prompt length ratio
 │   ├── refusal_bias.py        # Refusal pattern matching
-│   └── unsafe_prompt.py       # Toxicity keyword classification
+│   ├── unsafe_prompt.py       # Toxicity keyword classification
+│   └── llm_judge.py           # GPT-4o-mini semantic label evaluation
 ├── pipeline/
 │   ├── data_loader.py         # HuggingFace dataset ingestion
 │   └── quality_pipeline.py    # Orchestrates detector runs
@@ -73,35 +79,44 @@ src/rlhf_eval/
     ├── parsing.py             # HH-RLHF conversation parsing
     └── stats.py               # Statistical utilities
 
+dashboard/
+└── app.py                     # Streamlit dashboard (flagged explorer + RM comparison)
+
 scripts/
 └── export_flagged_indices.py  # Export flagged indices for Colab
 
 notebooks/
 └── reward_model_experiment.ipynb  # Self-contained Colab notebook
 
-tests/                         # 207 tests across 4 test modules
+tests/                         # pytest suite across 5 test modules
+docker-compose.yml             # postgres + api + dashboard
+Dockerfile
+.github/workflows/ci.yml       # CI: pytest + mypy + ruff
 ```
 
-## Setup
+## Quick Start
 
-### Prerequisites
-
-- Python 3.11+
-- PostgreSQL 16 (Docker recommended)
-
-### Database
+### Docker Compose (recommended)
 
 ```bash
-docker run -d --name rlhf-postgres \
-  -p 5432:5432 \
-  -e POSTGRES_USER=user \
-  -e POSTGRES_PASSWORD=pass \
-  -e POSTGRES_DB=rlhf_dev \
-  -v rlhf_pgdata:/var/lib/postgresql/data \
-  postgres:16
+git clone https://github.com/LewallenAE/rlhf-eval.git
+cd rlhf-eval
+OPENAI_API_KEY=your-key docker-compose up
 ```
 
-### Installation
+This starts PostgreSQL, the FastAPI service (`http://localhost:8000`), and the Streamlit dashboard (`http://localhost:8501`).
+
+- **API docs**: http://localhost:8000/docs
+- **Dashboard**: http://localhost:8501
+
+### Manual Setup
+
+#### Prerequisites
+
+- Python 3.11+
+- PostgreSQL 16
+
+#### Installation
 
 ```bash
 git clone https://github.com/LewallenAE/rlhf-eval.git
@@ -111,15 +126,16 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -e ".[dev]"
 ```
 
-### Environment
+#### Environment
 
 Create a `.env` file in the project root:
 
 ```
 RLHF_DATABASE_URL=postgresql://user:pass@localhost:5432/rlhf_dev
+OPENAI_API_KEY=your-key-here   # required only for LLM judge detector
 ```
 
-### Run Tests
+#### Run Tests
 
 ```bash
 pytest tests/ -v
@@ -211,6 +227,7 @@ All detectors extend `BaseDetector` and implement `score()` and `score_batch()`.
 | **Length Ratio** | Response length / prompt length | P5 (lower = suspiciously short) |
 | **Refusal Bias** | Regex pattern matching for refusal phrases | Fixed threshold (binary) |
 | **Unsafe Prompt** | Keyword-based toxicity classification | Fixed threshold (binary) |
+| **LLM Judge** | GPT-4o-mini scores 3 dimensions (1–5): helpfulness delta, honest preference, label confidence | Fixed threshold = 3 (flags any dim < 3) |
 
 ## Tech Stack
 
@@ -221,7 +238,15 @@ All detectors extend `BaseDetector` and implement `score()` and `score_batch()`.
 - **sentence-transformers** for semantic similarity embeddings
 - **textstat** for readability scoring
 - **HuggingFace Datasets** for data loading
-- **pytest** (207 tests)
+- **OpenAI** (`gpt-4o-mini`) for LLM judge evaluation
+- **FastAPI** + **uvicorn** for the service layer (`/docs` auto-generated)
+- **Streamlit** for the interactive dashboard
+- **Docker Compose** for one-command deployment
+- **GitHub Actions** CI (pytest + mypy + ruff)
+
+## How This Generalizes
+
+This system works on **any dataset of preference pairs**, not just HH-RLHF. The pipeline expects (prompt, chosen, rejected) triplets — the same structure used by TL;DR summarization feedback, OpenAssistant, Ultrafeedback, and every major RLHF dataset. To run it on a different dataset, implement a loader that produces that schema and calls `ingest_to_database`. All 7 detectors, the reward model training loop, and the LLM judge run unchanged. The detector thresholds are learned from each dataset's own score distribution via configurable percentiles, so no calibration is needed. The result is a general-purpose data quality harness for any reward modeling pipeline.
 
 ## License
 
