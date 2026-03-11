@@ -215,7 +215,7 @@ class LLMJudgeDetector(BaseDetector):
 
     def is_flagged(self, score: float, threshold: float) -> bool:
         """Flag when the minimum dimension score is below threshold."""
-        return score < threshold
+        return bool(score < threshold)
 
     def get_fixed_threshold(self) -> float:
         """Always use 3.0 — flag when any dimension < 3."""
