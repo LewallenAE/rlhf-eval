@@ -172,14 +172,14 @@ class LLMJudgeDetector(BaseDetector):
     def score_batch(
         self,
         pairs: list[tuple],  # type: ignore[override]
-        batch_size: int = 32,
+        _batch_size: int = 32,
     ) -> np.ndarray:
         """Score a batch of preference pairs.
 
         Args:
             pairs: List of (prompt, chosen, rejected) triplets.
                    The pipeline passes these via a special case for "llm_judge".
-            batch_size: Unused — concurrency controlled by max_concurrent.
+            _batch_size: Unused — concurrency controlled by max_concurrent.
 
         Returns:
             Array of min-dimension scores (1.0-5.0). Scores < 3.0 are flagged.
