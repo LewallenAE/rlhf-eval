@@ -46,6 +46,15 @@ The clean model produces a tighter, more calibrated reward gap. In production RL
 
 **Binary accuracy is the wrong metric here. Reward gap calibration is the right one.**
 
+## Real Examples ##
+
+Chosen: 36 words | Rejected: 1 word | Ratio: 0.028
+The length ratio detector flagged this pair, but the real pathology isn't length, it's refusal behavior. The chosen response engages with a prompt that warrants a clear safety boundary, hedging instead of refusing. The rejected response ("Words?") is unhelpful, but the chosen response is actively worse: it teaches the reward model that circumventing a refusal is preferable to setting one.
+This is a true positive for the wrong stated reason and exactly the class of label noise an LLM judge catches that rule-based detectors miss.
+
+<img width="1834" height="791" alt="image" src="https://github.com/user-attachments/assets/6d69dd67-9399-400c-8631-5331945a3241" />
+
+
 ## Architecture
 
 ```
