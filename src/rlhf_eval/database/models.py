@@ -12,6 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -42,6 +43,7 @@ class QualitySignal(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     example_id: Mapped[int] = mapped_column(ForeignKey("examples.id"), index=True)
+    run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("detector_runs.id"), index=True, nullable=True)
     detector_name: Mapped[str] = mapped_column(String(100), index=True)
     score: Mapped[float] = mapped_column(Float)
     flagged: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -85,3 +87,21 @@ class Evaluation(Base):
     eval_type: Mapped[str] = mapped_column(String(100))
     results: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class Review(Base):
+    """Human reviewer labels for flagged examples (true_positive / false_positive / needs_review)."""
+
+    __tablename__ = "reviews"
+    __table_args__ = (UniqueConstraint("example_id", "detector_name", name="uq_review_example_detector"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    example_id: Mapped[int] = mapped_column(ForeignKey("examples.id"), index=True)
+    detector_name: Mapped[str] = mapped_column(String(100), index=True)
+    label: Mapped[str] = mapped_column(String(50))  # true_positive | false_positive | needs_review
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )

@@ -97,10 +97,10 @@ def run_detector(
             if not examples:
                 break
 
-            # Filter already-processed examples if resuming
+            # Filter already-processed examples if resuming (scoped to this run)
             to_process = []
             for ex in examples:
-                if resume and signal_exists(session, ex.id, detector.name):
+                if resume and signal_exists(session, ex.id, detector.name, run_id=run.id):
                     pbar.update(1)
                     continue
                 to_process.append(ex)
@@ -194,6 +194,7 @@ def run_detector(
             batch.append(
                 {
                     "example_id": example_id,
+                    "run_id": run.id,
                     "detector_name": detector.name,
                     "score": score_val,
                     "flagged": flagged,
@@ -303,7 +304,7 @@ def get_clean_example_ids(
         if latest_run is None:
             continue
 
-        flagged = get_flagged_example_ids(session, detector_name)
+        flagged = get_flagged_example_ids(session, detector_name, run_id=latest_run.id)
         flagged_ids.update(flagged)
 
     clean_ids = sorted(all_ids - flagged_ids)
@@ -336,24 +337,35 @@ def generate_quality_report(session: Session) -> dict:
     detector_reports: dict[str, dict] = {}
     all_flagged: set[int] = set()
 
+    from sqlalchemy import func, select
+    from rlhf_eval.database.models import QualitySignal
+
     for detector_name in settings.detectors:
         latest_run = get_latest_detector_run(session, detector_name)
         if latest_run is None:
             detector_reports[detector_name] = {"status": "not_run"}
             continue
 
-        flagged_ids = get_flagged_example_ids(session, detector_name)
+        flagged_ids = get_flagged_example_ids(session, detector_name, run_id=latest_run.id)
         all_flagged.update(flagged_ids)
+
+        total_scored = session.execute(
+            select(func.count(QualitySignal.id)).where(
+                QualitySignal.detector_name == detector_name,
+                QualitySignal.run_id == latest_run.id,
+            )
+        ).scalar_one()
+        flagged_count = len(flagged_ids)
 
         detector_reports[detector_name] = {
             "status": "complete",
             "threshold": latest_run.threshold,
             "percentile_used": latest_run.percentile_used,
-            "total_scored": latest_run.total_examples,
-            "flagged": latest_run.flagged_count,
+            "total_scored": total_scored,
+            "flagged": flagged_count,
             "flagged_pct": (
-                100 * latest_run.flagged_count / latest_run.total_examples
-                if latest_run.total_examples > 0
+                round(100 * flagged_count / total_scored, 2)
+                if total_scored > 0
                 else 0.0
             ),
             "stats": latest_run.stats,

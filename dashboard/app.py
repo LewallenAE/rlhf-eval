@@ -35,15 +35,29 @@ def get_engine():
 
 @st.cache_data(ttl=300)
 def load_flagged_examples(detector_name: str, limit: int = 200) -> list[dict]:
-    """Load flagged examples for a given detector from the DB."""
+    """Load flagged examples for a given detector from the latest completed run."""
     from sqlalchemy import select
     from sqlalchemy.orm import Session
-    from rlhf_eval.database.models import Example, QualitySignal
+    from rlhf_eval.database.models import Example, QualitySignal, DetectorRun
 
     engine = get_engine()
     with Session(engine) as session:
+        # Get the latest completed run for this detector
+        latest_run = session.execute(
+            select(DetectorRun)
+            .where(
+                DetectorRun.detector_name == detector_name,
+                DetectorRun.completed_at.isnot(None),
+            )
+            .order_by(DetectorRun.completed_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+        run_filter = (QualitySignal.run_id == latest_run.id) if latest_run else (QualitySignal.run_id.is_(None))
+
         rows = session.execute(
             select(
+                Example.id,
                 Example.dataset_index,
                 Example.prompt,
                 Example.chosen_last_assistant,
@@ -56,12 +70,14 @@ def load_flagged_examples(detector_name: str, limit: int = 200) -> list[dict]:
             .where(
                 QualitySignal.detector_name == detector_name,
                 QualitySignal.flagged == True,  # noqa: E712
+                run_filter,
             )
             .limit(limit)
         ).all()
 
         return [
             {
+                "id": r.id,
                 "index": r.dataset_index,
                 "prompt": r.prompt,
                 "chosen": r.chosen_last_assistant,
@@ -72,6 +88,37 @@ def load_flagged_examples(detector_name: str, limit: int = 200) -> list[dict]:
             }
             for r in rows
         ]
+
+
+def load_reviews(example_ids: list[int], detector_name: str) -> dict[int, str]:
+    """Load existing review labels for the displayed examples (no cache — always fresh)."""
+    from sqlalchemy.orm import Session
+    from rlhf_eval.database.operations import get_reviews_for_examples
+
+    engine = get_engine()
+    with Session(engine) as session:
+        return get_reviews_for_examples(session, example_ids, detector_name)
+
+
+def save_review(example_id: int, detector_name: str, label: str) -> None:
+    """Persist a review label to the database."""
+    from sqlalchemy.orm import Session
+    from rlhf_eval.database.operations import upsert_review
+
+    engine = get_engine()
+    with Session(engine) as session:
+        upsert_review(session, example_id, detector_name, label)
+        session.commit()
+
+
+def load_review_stats() -> dict:
+    """Load per-detector TP/FP/needs_review counts."""
+    from sqlalchemy.orm import Session
+    from rlhf_eval.database.operations import get_review_stats
+
+    engine = get_engine()
+    with Session(engine) as session:
+        return get_review_stats(session)
 
 
 @st.cache_data(ttl=300)
@@ -151,8 +198,23 @@ with tab1:
             examples = load_flagged_examples(selected_detector, limit=max_examples)
             st.info(f"Showing {len(examples)} flagged examples for **{selected_detector}**")
 
+            # Load existing reviews for all displayed examples
+            example_ids = [ex["id"] for ex in examples]
+            try:
+                existing_reviews = load_reviews(example_ids, selected_detector)
+            except Exception:
+                existing_reviews = {}
+
+            _label_display = {
+                "true_positive": "✓ True Positive",
+                "false_positive": "✗ False Positive",
+                "needs_review": "? Needs Review",
+            }
+
             for i, ex in enumerate(examples):
-                with st.expander(f"Example #{ex['index']} — score: {ex['score']}", expanded=(i == 0)):
+                current_label = existing_reviews.get(ex["id"])
+                label_badge = f" · {_label_display[current_label]}" if current_label else ""
+                with st.expander(f"Example #{ex['index']} — score: {ex['score']}{label_badge}", expanded=(i == 0)):
                     # Prompt
                     st.markdown("**Prompt**")
                     st.text_area("", ex["prompt"], height=80, key=f"prompt_{i}", disabled=True)
@@ -170,14 +232,56 @@ with tab1:
                     meta = ex["metadata"]
                     if meta:
                         st.markdown("**Detector metadata**")
-                        # LLM judge scores
                         if "helpfulness_delta" in meta:
                             m1, m2, m3 = st.columns(3)
                             m1.metric("Helpfulness Delta", meta.get("helpfulness_delta", "—"))
                             m2.metric("Honest Preference", meta.get("honest_preference", "—"))
                             m3.metric("Label Confidence", meta.get("label_confidence", "—"))
+                            if meta.get("reason"):
+                                st.caption(f"**Judge reasoning:** {meta['reason']}")
                         else:
                             st.json(meta)
+
+                    # Review buttons
+                    st.markdown("**Review**")
+                    r1, r2, r3 = st.columns(3)
+                    if r1.button("✓ True Positive", key=f"tp_{i}", type="primary" if current_label == "true_positive" else "secondary"):
+                        save_review(ex["id"], selected_detector, "true_positive")
+                        st.rerun()
+                    if r2.button("✗ False Positive", key=f"fp_{i}", type="primary" if current_label == "false_positive" else "secondary"):
+                        save_review(ex["id"], selected_detector, "false_positive")
+                        st.rerun()
+                    if r3.button("? Needs Review", key=f"nr_{i}", type="primary" if current_label == "needs_review" else "secondary"):
+                        save_review(ex["id"], selected_detector, "needs_review")
+                        st.rerun()
+
+            # Reviewer precision summary
+            st.divider()
+            st.subheader("Reviewer Precision")
+            try:
+                review_stats = load_review_stats()
+                if review_stats:
+                    import pandas as pd
+                    rows = []
+                    for det, counts in review_stats.items():
+                        tp = counts.get("true_positive", 0)
+                        fp = counts.get("false_positive", 0)
+                        nr = counts.get("needs_review", 0)
+                        total = tp + fp + nr
+                        precision = round(100 * tp / (tp + fp), 1) if (tp + fp) > 0 else None
+                        rows.append({
+                            "Detector": det,
+                            "True Positive": tp,
+                            "False Positive": fp,
+                            "Needs Review": nr,
+                            "Reviewed": total,
+                            "Precision (%)": precision,
+                        })
+                    st.dataframe(pd.DataFrame(rows).set_index("Detector"), use_container_width=True)
+                else:
+                    st.caption("No reviews submitted yet.")
+            except Exception as e:
+                st.caption(f"Could not load review stats: {e}")
 
 
 # ====================================================================

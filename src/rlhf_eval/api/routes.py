@@ -82,6 +82,18 @@ class ExperimentsResponse(BaseModel):
     detectors: dict[str, Any]
 
 
+class ReviewRequest(BaseModel):
+    example_index: int
+    detector_name: str
+    label: str  # true_positive | false_positive | needs_review
+
+
+class ReviewResponse(BaseModel):
+    example_index: int
+    detector_name: str
+    label: str
+
+
 # ── Endpoints ───────────────────────────────────────────────────────
 
 @app.post("/ingest", response_model=IngestResponse, summary="Ingest preference pair data")
@@ -200,6 +212,62 @@ def experiments() -> ExperimentsResponse:
 
     except Exception as exc:
         logger.exception("Experiments query failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/reviews", response_model=ReviewResponse, summary="Submit a reviewer label")
+def submit_review(request: ReviewRequest) -> ReviewResponse:
+    """Label a flagged example as true_positive, false_positive, or needs_review.
+
+    - **example_index**: The dataset_index of the example to review.
+    - **detector_name**: Which detector's flag you are reviewing.
+    - **label**: One of `true_positive`, `false_positive`, `needs_review`.
+    """
+    valid_labels = {"true_positive", "false_positive", "needs_review"}
+    if request.label not in valid_labels:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid label {request.label!r}. Must be one of {sorted(valid_labels)}.",
+        )
+
+    try:
+        from rlhf_eval.database.connection import get_engine, SessionContext
+        from rlhf_eval.database.operations import get_example_by_index, upsert_review
+
+        engine = get_engine()
+        with SessionContext(engine) as session:
+            example = get_example_by_index(session, request.example_index)
+            if example is None:
+                raise HTTPException(status_code=404, detail=f"Example index {request.example_index} not found.")
+            upsert_review(session, example.id, request.detector_name, request.label)
+            session.commit()
+
+        return ReviewResponse(
+            example_index=request.example_index,
+            detector_name=request.detector_name,
+            label=request.label,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Review submission failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/reviews/stats", summary="Per-detector reviewer precision stats")
+def review_stats() -> dict[str, Any]:
+    """Return TP/FP/needs_review counts per detector from human reviews."""
+    try:
+        from rlhf_eval.database.connection import get_engine, SessionContext
+        from rlhf_eval.database.operations import get_review_stats
+
+        engine = get_engine()
+        with SessionContext(engine) as session:
+            return get_review_stats(session)
+
+    except Exception as exc:
+        logger.exception("Review stats query failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

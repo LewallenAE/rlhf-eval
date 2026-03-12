@@ -40,7 +40,8 @@ Score each dimension 1-5:
 - honest_preference: Is chosen better for real reasons vs. surface reasons?
 - label_confidence: How confident are you the human label is correct?
 
-Return: {{"helpfulness_delta": int, "honest_preference": int, "label_confidence": int}}"""
+Return JSON with scores and a concise reason (1-2 sentences) explaining the lowest score:
+{{"helpfulness_delta": int, "honest_preference": int, "label_confidence": int, "reason": str}}"""
 
 FLAG_THRESHOLD = 3.0
 DEFAULT_MAX_CONCURRENT = 50
@@ -109,7 +110,7 @@ class LLMJudgeDetector(BaseDetector):
                         {"role": "user", "content": user_msg},
                     ],
                     temperature=0.0,
-                    max_tokens=100,
+                    max_tokens=300,
                     response_format={"type": "json_object"},
                 )
                 raw = response.choices[0].message.content or "{}"
@@ -123,6 +124,7 @@ class LLMJudgeDetector(BaseDetector):
                     "label_confidence": confidence,
                     "min_score": min(helpfulness, honest, confidence),
                     "judge_flagged": min(helpfulness, honest, confidence) < FLAG_THRESHOLD,
+                    "reason": scores.get("reason", ""),
                 }
             except Exception as exc:
                 logger.warning("LLM judge failed for pair: %s", exc)
@@ -172,14 +174,14 @@ class LLMJudgeDetector(BaseDetector):
     def score_batch(
         self,
         pairs: list[tuple],  # type: ignore[override]
-        _batch_size: int = 32,
+        batch_size: int = 32,
     ) -> np.ndarray:
         """Score a batch of preference pairs.
 
         Args:
             pairs: List of (prompt, chosen, rejected) triplets.
                    The pipeline passes these via a special case for "llm_judge".
-            _batch_size: Unused — concurrency controlled by max_concurrent.
+            batch_size: Unused — concurrency controlled by max_concurrent.
 
         Returns:
             Array of min-dimension scores (1.0-5.0). Scores < 3.0 are flagged.
