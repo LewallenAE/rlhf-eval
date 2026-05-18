@@ -100,7 +100,7 @@ def run_detector(
             # Filter already-processed examples if resuming (scoped to this run)
             to_process = []
             for ex in examples:
-                if resume and signal_exists(session, ex.id, detector.name, run_id=run.id):
+                if resume and signal_exists(session, ex.id, detector.name):
                     pbar.update(1)
                     continue
                 to_process.append(ex)
