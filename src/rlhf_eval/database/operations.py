@@ -168,14 +168,11 @@ def update_detector_run(session: Session, run_id: int, **kwargs) -> DetectorRun:
 def get_latest_detector_run(
     session: Session, detector_name: str
 ) -> DetectorRun | None:
-    """Get the most recent completed run for a detector."""
+    """Get the most recent run for a detector, ordered by start time."""
     return session.execute(
         select(DetectorRun)
-        .where(
-            DetectorRun.detector_name == detector_name,
-            DetectorRun.completed_at.isnot(None),
-        )
-        .order_by(DetectorRun.completed_at.desc())
+        .where(DetectorRun.detector_name == detector_name)
+        .order_by(DetectorRun.started_at.desc())
         .limit(1)
     ).scalar_one_or_none()
 
