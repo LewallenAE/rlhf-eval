@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from rlhf_eval.database.models import (
     Base,
@@ -113,7 +113,7 @@ class TestModels:
     def test_quality_signal_columns(self) -> None:
         cols = {c.name for c in QualitySignal.__table__.columns}
         expected = {
-            "id", "example_id", "detector_name", "score",
+            "id", "example_id", "run_id", "detector_name", "score",
             "flagged", "metadata", "created_at",
         }
         assert expected == cols
@@ -154,6 +154,11 @@ class TestModels:
         fk = list(QualitySignal.__table__.c["example_id"].foreign_keys)
         assert len(fk) == 1
         assert fk[0].target_fullname == "examples.id"
+
+    def test_quality_signal_fk_to_detector_runs(self) -> None:
+        fk = list(QualitySignal.__table__.c["run_id"].foreign_keys)
+        assert len(fk) == 1
+        assert fk[0].target_fullname == "detector_runs.id"
 
 
 # ===================================================================
