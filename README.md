@@ -60,8 +60,6 @@ LLM judges are not immune to hallucination and the reason why matters. In the ex
 This is why high-quality preference data, created by domain-knowledgeable annotators with stringent rubrics, is foundational not optional. Garbage in, garbage out, at every layer of the stack.
 This finding motivated the human audit interface in the dashboard. Judge outputs are a signal, not a ground truth.
 
-However, it's worth it to note that RLHF isn't the direct cause of hallucinations in LLMs in fact, as certain papers have shown it may, in certain cases, reduce the number of hallucinations. It's better to step back and look at the big picture, that the algorithms, the weights, data to ingest, and every other decision used to create, pre-train, and fine-tune models is littered with human preference.
-
 <img width="1779" height="699" alt="image" src="https://github.com/user-attachments/assets/6db1aac3-c60d-4669-8b2a-ddb61385f3aa" />
 
 
